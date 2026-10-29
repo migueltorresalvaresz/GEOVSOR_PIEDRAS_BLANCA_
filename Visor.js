@@ -393,21 +393,25 @@ const dataFiles = [
     key: "corregimiento",
     label: "Corregimiento Santa Elena",
     file: "corregimiento_santa_elena.geojson",
+    alternateFiles: ["Corregimiento_Santa_elena.geojson"],
   },
   {
     key: "vereda",
     label: "Vereda Piedras Blancas",
     file: "piedras_blancas.geojson",
+    alternateFiles: ["Piedras_Blancas.geojson"],
   },
   {
     key: "construcciones",
     label: "Construcciones registradas",
     file: "construcciones_piedras_blancas.geojson",
+    alternateFiles: ["Construcciones_piedras_blancas.geojson"],
   },
   {
     key: "pot",
     label: "Usos generales POT 2014",
     file: "pot_piedras_blancas.geojson",
+    alternateFiles: ["POT_piedras_blancas.geojson"],
   },
 ];
 const dataStatusTitle = $(".data-status-title");
@@ -433,20 +437,41 @@ const setDataFileStatus = (key, state, message) => {
   item.querySelector(".data-load-state").textContent = message;
 };
 
-const loadLocalGeoJSON = async ({ key, file }) => {
-  setDataFileStatus(key, "loading", "Descargando…");
-  const url = new URL(`DATA/${file}`, document.baseURI);
+const loadLocalGeoJSON = async ({ key, file, alternateFiles = [] }) => {
+  const fileNames = [file, ...alternateFiles];
+  const folders = ["DATA", "data", "Data"];
   let response;
-  try {
-    response = await fetch(url);
-  } catch (error) {
-    setDataFileStatus(key, "error", "No disponible");
-    throw new Error(`${file}: ${error.message}`);
+  let url;
+
+  for (const folder of folders) {
+    for (const name of fileNames) {
+      url = new URL(`${folder}/${name}`, document.baseURI);
+      setDataFileStatus(key, "loading", `Buscando ${folder}/${name}`);
+
+      try {
+        response = await fetch(url);
+      } catch (error) {
+        setDataFileStatus(key, "error", "Error de conexión");
+        throw new Error(`${url.pathname}: ${error.message}`);
+      }
+
+      if (response.ok) break;
+      if (response.status !== 404) {
+        setDataFileStatus(key, "error", `Error HTTP ${response.status}`);
+        throw new Error(`${url.pathname}: HTTP ${response.status}`);
+      }
+      response = null;
+    }
+    if (response) break;
   }
-  if (!response.ok) {
-    setDataFileStatus(key, "error", `Error HTTP ${response.status}`);
-    throw new Error(`${url.pathname}: HTTP ${response.status}`);
+
+  if (!response || !url) {
+    setDataFileStatus(key, "error", "No encontrado (404)");
+    throw new Error(
+      `No se encontró ${file} en ninguna variante de DATA/data/Data o de mayúsculas`,
+    );
   }
+
   let data;
   try {
     data = await response.json();
@@ -537,7 +562,9 @@ Promise.allSettled(dataFiles.map(loadLocalGeoJSON))
   })
   .catch((error) => {
     dataStatusTitle.textContent = "No se completó la carga de capas";
-    dataStatusDetail.textContent = `${error.message}. Confirma que los archivos estén publicados dentro de DATA, con esos nombres exactos.`;
+    dataStatusDetail.textContent =
+      `${error.message}. Los GeoJSON deben estar incluidos en la carpeta fuente de GitHub Pages; ` +
+      "los archivos SHP no los reemplazan.";
     $("#constructionAnalysisStatus").textContent = "No se pudo cargar el análisis. Verifica que DATA/construcciones_piedras_blancas.geojson esté disponible.";
     console.error("Error al cargar capas de DATA:", error);
   });
